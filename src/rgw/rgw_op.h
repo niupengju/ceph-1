@@ -129,6 +129,8 @@ protected:
   bool is_slo;
   string lo_etag;
 
+  bool rgwx_stat; /* extended rgw stat operation */
+
   int init_common();
 public:
   RGWGetObj() {

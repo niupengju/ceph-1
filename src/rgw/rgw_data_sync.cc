@@ -559,9 +559,9 @@ int RGWRemoteDataLog::read_source_log_shards_next(map<int, string> shard_markers
   return run(new RGWListRemoteDataLogCR(&sync_env, shard_markers, 1, result));
 }
 
-int RGWRemoteDataLog::init(const string& _source_zone, RGWRESTConn *_conn, RGWSyncErrorLogger *_error_logger)
+int RGWRemoteDataLog::init(const string& _source_zone, RGWRESTConn *_conn, RGWSyncErrorLogger *_error_logger, RGWSyncModuleInstanceRef& _sync_module)
 {
-  sync_env.init(store->ctx(), store, _conn, async_rados, &http_manager, _error_logger, _source_zone);
+  sync_env.init(store->ctx(), store, _conn, async_rados, &http_manager, _error_logger, _source_zone, _sync_module);
 
   if (initialized) {
     return 0;
@@ -1476,6 +1476,55 @@ public:
   }
 };
 
+
+class RGWDefaultDataSyncModule : public RGWDataSyncModule {
+public:
+  RGWDefaultDataSyncModule() {}
+
+  RGWCoroutine *sync_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, uint64_t versioned_epoch) override;
+  RGWCoroutine *remove_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime, bool versioned, uint64_t versioned_epoch) override;
+  RGWCoroutine *create_delete_marker(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime,
+                                     rgw_bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch) override;
+};
+
+class RGWDefaultSyncModuleInstance : public RGWSyncModuleInstance {
+  RGWDefaultDataSyncModule data_handler;
+public:
+  RGWDefaultSyncModuleInstance() {}
+  RGWDataSyncModule *get_data_handler() override {
+    return &data_handler;
+  }
+};
+
+int RGWDefaultSyncModule::create_instance(CephContext *cct, map<string, string>& config, RGWSyncModuleInstanceRef *instance)
+{
+  instance->reset(new RGWDefaultSyncModuleInstance());
+  return 0;
+}
+ 
+RGWCoroutine *RGWDefaultDataSyncModule::sync_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, uint64_t versioned_epoch)
+{
+  return new RGWFetchRemoteObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone, bucket_info,
+                                 key, versioned_epoch,
+                                 true);
+}
+
+RGWCoroutine *RGWDefaultDataSyncModule::remove_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key,
+                                                      real_time& mtime, bool versioned, uint64_t versioned_epoch)
+{
+  return new RGWRemoveObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone,
+                            bucket_info, key, versioned, versioned_epoch,
+                            NULL, NULL, false, &mtime);
+}
+
+RGWCoroutine *RGWDefaultDataSyncModule::create_delete_marker(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime,
+                                                             rgw_bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch)
+{
+  return new RGWRemoveObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone,
+                            bucket_info, key, versioned, versioned_epoch,
+                            &owner.id, &owner.display_name, true, &mtime);
+}
+
 class RGWDataSyncControlCR : public RGWBackoffControlCR
 {
   RGWDataSyncEnv *sync_env;
@@ -1542,6 +1591,23 @@ int RGWRemoteDataLog::run_sync(int num_shards)
 
 int RGWDataSyncStatusManager::init()
 {
+
+  auto zone_def_iter = store->zone_by_id.find(source_zone);
+  if (zone_def_iter == store->zone_by_id.end()) {
+    ldout(store->ctx(), 0) << "ERROR: failed to find zone config info for zone=" << source_zone << dendl;
+    return -EIO;
+  }
+
+  auto& zone_def = zone_def_iter->second;
+
+  if (!store->get_sync_modules_manager()->supports_data_export(zone_def.tier_type)) {
+    return -ENOTSUP;
+  }
+
+  //RGWZoneParams& zone_params = store->get_zone_params();
+
+  sync_module = store->get_sync_module();
+  
   conn = store->get_zone_conn_by_id(source_zone);
   if (!conn) {
     ldout(store->ctx(), 0) << "connection object to zone " << source_zone << " does not exist" << dendl;
@@ -1616,7 +1682,7 @@ int RGWRemoteBucketLog::init(const string& _source_zone, RGWRESTConn *_conn,
   bs.bucket = bucket;
   bs.shard_id = shard_id;
 
-  sync_env.init(store->ctx(), store, conn, async_rados, http_manager, _error_logger, source_zone);
+  sync_env.init(store->ctx(), store, conn, async_rados, http_manager, _error_logger, source_zone, _sync_module);
 
   return 0;
 }
@@ -1841,19 +1907,12 @@ RGWBucketSyncStatusManager::~RGWBucketSyncStatusManager() {
 }
 
 
-struct bucket_entry_owner {
-  string id;
-  string display_name;
-
-  bucket_entry_owner() {}
-  bucket_entry_owner(const string& _id, const string& _display_name) : id(_id), display_name(_display_name) {}
-
-  void decode_json(JSONObj *obj) {
-    JSONDecoder::decode_json("ID", id, obj);
-    JSONDecoder::decode_json("DisplayName", display_name, obj);
-  }
-};
-
+void bucket_entry_owner::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("ID", id, obj);
+  JSONDecoder::decode_json("DisplayName", display_name, obj);
+}
+ 
 struct bucket_list_entry {
   bool delete_marker;
   rgw_obj_key key;
@@ -2131,6 +2190,8 @@ public:
     set_status("init");
 
     logger.init(sync_env, "Object", ss.str());
+
+    data_sync_module = sync_env->sync_module->get_data_handler();
   }
 
   int operate() {
@@ -2168,7 +2229,8 @@ public:
               versioned = true;
             }
             logger.log("remove");
-            call(new RGWRemoveObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone, *bucket_info, key, versioned, versioned_epoch, NULL, NULL, false, &timestamp));
+            //call(new RGWRemoveObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone, *bucket_info, key, versioned, versioned_epoch, NULL, NULL, false, &timestamp));
+            call(data_sync_module->create_delete_marker(sync_env, *bucket_info, key, timestamp, owner, versioned, versioned_epoch));
           } else if (op == CLS_RGW_OP_LINK_OLH_DM) {
             logger.log("creating delete marker");
             set_status("creating delete marker");
@@ -2750,13 +2812,15 @@ int RGWBucketSyncStatusManager::init()
 
   error_logger = new RGWSyncErrorLogger(store, RGW_SYNC_ERROR_LOG_SHARD_PREFIX, ERROR_LOGGER_SHARDS);
 
+  sync_module.reset(new RGWDefaultSyncModuleInstance());
+  
   int effective_num_shards = (num_shards ? num_shards : 1);
 
   auto async_rados = store->get_async_rados();
 
   for (int i = 0; i < effective_num_shards; i++) {
     RGWRemoteBucketLog *l = new RGWRemoteBucketLog(store, this, async_rados, &http_manager);
-    ret = l->init(source_zone, conn, bucket, (num_shards ? i : -1), error_logger);
+    ret = l->init(source_zone, conn, bucket, (num_shards ? i : -1), error_logger, sync_module);
     if (ret < 0) {
       ldout(store->ctx(), 0) << "ERROR: failed to initialize RGWRemoteBucketLog object" << dendl;
       return ret;

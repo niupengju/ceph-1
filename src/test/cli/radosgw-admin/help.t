@@ -166,6 +166,17 @@
      --source-zone             specify the source zone (for data sync)
      --default                 set entity (realm, zonegroup, zone) as default
      --read-only               set zone as read-only (when adding to zonegroup)
+     --tier-type=<type>        zone tier type
+     --tier-config=<k>=<v>[,...]
+                               set zone tier config keys, values
+     --tier-config-rm=<k>[,...]
+                               unset zone tier config keys
+     --tier_type=<type>        zone tier type
+     --sync-from-all[=false]   set/reset whether zone syncs from all zonegroup peers
+     --sync-from=[zone-name][,...]
+                               set list of zones to sync from
+     --sync-from-rm=[zone-name][,...]
+                               remove zones from list of zones to sync from
      --placement-id            placement id for zonegroup placement commands
      --tags=<list>             list of tags for zonegroup placement add and modify commands
      --tags-add=<list>         list of tags to add for zonegroup placement modify command
