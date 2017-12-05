@@ -21,6 +21,7 @@
 #include "rgw_log.h"
 #include "rgw_metadata.h"
 #include "rgw_meta_sync_status.h"
+#include "rgw_sync_module.h"
 #include "rgw_period_puller.h"
 
 class RGWWatcher;

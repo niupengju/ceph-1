@@ -18,6 +18,7 @@
 #include "rgw_bucket.h"
 #include "rgw_metadata.h"
 #include "rgw_boost_asio_yield.h"
+#include "rgw_sync_module.h"
 
 #include "cls/lock/cls_lock_client.h"
 
@@ -1484,7 +1485,7 @@ public:
   RGWCoroutine *sync_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, uint64_t versioned_epoch) override;
   RGWCoroutine *remove_object(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime, bool versioned, uint64_t versioned_epoch) override;
   RGWCoroutine *create_delete_marker(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime,
-                                     rgw_bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch) override;
+                                     bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch) override;
 };
 
 class RGWDefaultSyncModuleInstance : public RGWSyncModuleInstance {
@@ -1518,7 +1519,7 @@ RGWCoroutine *RGWDefaultDataSyncModule::remove_object(RGWDataSyncEnv *sync_env, 
 }
 
 RGWCoroutine *RGWDefaultDataSyncModule::create_delete_marker(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime,
-                                                             rgw_bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch)
+                                                             bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch)
 {
   return new RGWRemoveObjCR(sync_env->async_rados, sync_env->store, sync_env->source_zone,
                             bucket_info, key, versioned, versioned_epoch,
@@ -1626,7 +1627,7 @@ int RGWDataSyncStatusManager::init()
 
   error_logger = new RGWSyncErrorLogger(store, RGW_SYNC_ERROR_LOG_SHARD_PREFIX, ERROR_LOGGER_SHARDS);
 
-  r = source_log.init(source_zone, conn, error_logger);
+  r = source_log.init(source_zone, conn, error_logger, sync_module);
   if (r < 0) {
     lderr(store->ctx()) << "ERROR: failed to init remote log, r=" << r << dendl;
     finalize();
@@ -1675,7 +1676,8 @@ string RGWDataSyncStatusManager::shard_obj_name(const string& source_zone, int s
 
 int RGWRemoteBucketLog::init(const string& _source_zone, RGWRESTConn *_conn,
                              const rgw_bucket& bucket, int shard_id,
-                             RGWSyncErrorLogger *_error_logger)
+                             RGWSyncErrorLogger *_error_logger,
+                             RGWSyncModuleInstanceRef& _sync_module)
 {
   conn = _conn;
   source_zone = _source_zone;
@@ -2163,6 +2165,7 @@ class RGWBucketSyncSingleEntryCR : public RGWCoroutine {
   stringstream error_ss;
 
   RGWDataSyncDebugLogger logger;
+  RGWDataSyncModule *data_sync_module;
 
 
 public:

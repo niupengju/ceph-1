@@ -2,6 +2,7 @@
 #include "rgw_coroutine.h"
 #include "rgw_sync_module.h"
 #include "rgw_data_sync.h"
+#include "rgw_sync_module_es.h"
 #include "rgw_boost_asio_yield.h"
 #include "rgw_sync_module_es.h"
 #include "rgw_rest_conn.h"
@@ -64,11 +65,13 @@ struct es_obj_metadata {
           ldout(cct, 0) << "ERROR: failed to decode acl for " << bucket_info.bucket << "/" << key << dendl;
         }
 
-        const RGWAccessControlList& acl = policy.get_acl();
+        //const RGWAccessControlList& acl = policy.get_acl();
+        RGWAccessControlList& acl = policy.get_acl();
 
         permissions.insert(policy.get_owner().get_id().to_str());
         for (auto acliter : acl.get_grant_map()) {
-          const ACLGrant& grant = acliter.second;
+          ACLGrant& grant = acliter.second;
+          //const ACLGrant& grant = acliter.second;
           if (grant.get_type().get_type() == ACL_TYPE_CANON_USER &&
               ((uint32_t)grant.get_permission().get_permissions() & RGW_PERM_READ) != 0) {
             rgw_user user;
@@ -212,7 +215,7 @@ public:
     return new RGWElasticRemoveRemoteObjCBCR(sync_env, bucket_info, key, mtime, conf);
   }
   RGWCoroutine *create_delete_marker(RGWDataSyncEnv *sync_env, RGWBucketInfo& bucket_info, rgw_obj_key& key, real_time& mtime,
-                                     rgw_bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch) override {
+                                     bucket_entry_owner& owner, bool versioned, uint64_t versioned_epoch) override {
     ldout(sync_env->cct, 0) << conf.id << ": create_delete_marker: b=" << bucket_info.bucket << " k=" << key << " mtime=" << mtime
                             << " versioned=" << versioned << " versioned_epoch=" << versioned_epoch << dendl;
     return NULL;

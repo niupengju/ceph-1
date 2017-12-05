@@ -2,6 +2,7 @@
 #define CEPH_RGW_CR_RADOS_H
 
 #include "rgw_coroutine.h"
+#include "rgw_rados.h"
 #include "common/WorkQueue.h"
 #include "common/Throttle.h"
 

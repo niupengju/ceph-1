@@ -2204,20 +2204,6 @@ public:
   }
 };
 
-static void parse_tier_config_param(const string& s, map<string, string>& out)
-{
-  list<string> confs;
-  get_str_list(s, ",", confs);
-  for (auto c : confs) {
-    ssize_t pos = c.find("=");
-    if (pos < 0) {
-      out[c] = "";
-    } else {
-      out[c.substr(0, pos)] = c.substr(pos + 1);
-    }
-  }
-}
-
 int main(int argc, char **argv)
 {
   vector<const char*> args;

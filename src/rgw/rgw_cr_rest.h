@@ -71,12 +71,13 @@ template <class S, class T>
 class RGWSendRESTResourceCR : public RGWSimpleCoroutine {
   RGWRESTConn *conn;
   RGWHTTPManager *http_manager;
+  string method;
   string path;
   param_vec_t params;
   T *result;
   S input;
 
-  boost::intrusive_ptr<RGWSendRESTResourceCR> http_op;
+  boost::intrusive_ptr<RGWRESTSendResource> http_op;
 
 public:
   RGWSendRESTResourceCR(CephContext *_cct, RGWRESTConn *_conn,
@@ -93,8 +94,8 @@ public:
   }
 
   int send_request() {
-    auto op = boost::intrusive_ptr<RGWRESTPostResource>(
-        new RGWRESTPostResource(conn, method, path, params, NULL, http_manager));
+    auto op = boost::intrusive_ptr<RGWRESTSendResource>(
+        new RGWRESTSendResource(conn, method, path, params, NULL, http_manager));
 
     op->set_user_info((void *)stack);
 

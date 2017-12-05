@@ -90,7 +90,7 @@ public:
               const ceph::real_time *mod_ptr, const ceph::real_time *unmod_ptr,
               uint32_t mod_zone_id, uint64_t mod_pg_ver,
               bool prepend_metadata, bool get_op, bool rgwx_stat, RGWGetDataCB *cb,
-              RGWRESTStreamReadRequest **req);
+              RGWRESTStreamRWRequest **req);
   int complete_request(RGWRESTStreamRWRequest *req, string& etag, ceph::real_time *mtime, uint64_t *psize,map<string, string>& attrs);
 
   int get_resource(const string& resource,
@@ -270,14 +270,14 @@ class RGWRESTSendResource : public RefCountedObject {
 
 public:
   RGWRESTSendResource(RGWRESTConn *_conn,
-  			const string& _method,
+                      const string& _method,
 		      const string& _resource,
 		      const rgw_http_param_pair *pp,
 		      param_vec_t *extra_headers,
 		      RGWHTTPManager *_mgr);
 
   RGWRESTSendResource(RGWRESTConn *_conn,
-  			const string& _method,
+                      const string& _method,
 		      const string& _resource,
 		      param_vec_t& params,
 		      param_vec_t *extra_headers,
@@ -323,7 +323,7 @@ public:
 };
 
 template <class T>
-int RGWRESTPostResource::decode_resource(T *dest)
+int RGWRESTSendResource::decode_resource(T *dest)
 {
   int ret = req.get_status();
   if (ret < 0) {

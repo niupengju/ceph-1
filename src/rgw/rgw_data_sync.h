@@ -8,6 +8,7 @@
 #include "rgw_sync_module.h"
 
 #include "common/RWLock.h"
+#include "common/ceph_json.h"
 
 
 struct rgw_datalog_info {
@@ -167,7 +168,7 @@ struct bucket_entry_owner {
   bucket_entry_owner() {}
   bucket_entry_owner(const string& _id, const string& _display_name) : id(_id), display_name(_display_name) {}
 
-  void decode_json(JSONObj *obj) ;
+  void decode_json(JSONObj *obj);
 };
 
 class RGWSyncErrorLogger;

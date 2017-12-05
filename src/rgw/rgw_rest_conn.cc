@@ -129,7 +129,7 @@ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw
                          const real_time *mod_ptr, const real_time *unmod_ptr,
                          uint32_t mod_zone_id, uint64_t mod_pg_ver,
                          bool prepend_metadata, bool get_op, bool rgwx_stat,
-                         RGWGetDataCB *cb, RGWRESTStreamReadRequest **req)
+                         RGWGetDataCB *cb, RGWRESTStreamRWRequest **req)
 {
   string url;
   int ret = get_url(url);
@@ -188,7 +188,7 @@ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw
   return r;
 }
 
-int RGWRESTConn::complete_request(RGWRESTStreamReadRequest *req, string& etag, real_time *mtime, 
+int RGWRESTConn::complete_request(RGWRESTStreamRWRequest *req, string& etag, real_time *mtime, 
 									   uint64_t *psize,	map<string, string>& attrs)
 {
   int ret = req->complete(etag, mtime, psize, attrs);
@@ -295,6 +295,7 @@ int RGWRESTReadResource::aio_read()
 }
 
 RGWRESTSendResource::RGWRESTSendResource(RGWRESTConn *_conn,
+                                         const string& _method,
                                          const string& _resource,
 		                         const rgw_http_param_pair *pp,
 					 param_vec_t *extra_headers,
@@ -307,8 +308,8 @@ RGWRESTSendResource::RGWRESTSendResource(RGWRESTConn *_conn,
 }
 
 RGWRESTSendResource::RGWRESTSendResource(RGWRESTConn *_conn,
-						const string& _method,
-						const string& _resource,
+                                         const string& _method,
+                                         const string& _resource,
 					 param_vec_t& params,
 					 param_vec_t *extra_headers,
                                          RGWHTTPManager *_mgr)
